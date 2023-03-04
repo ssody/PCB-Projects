@@ -1,0 +1,148 @@
+int ledRed = PA9;                // choose the pin for the LED
+int inputPin = PB0;               // choose the input pin (for motion detector sensor)
+int motionDetected = LOW;             // we start, assuming no motion detected
+int ledGreen = PA10;
+int step=0;
+
+#include <IRremote.h>
+const int IR_BUTTON_1 = 12;
+const int IR_BUTTON_2 = 24;
+const int IR_BUTTON_3 = 94;
+
+enum Mode {
+  OPEN,
+  CLOSE,
+  MOTION_DETECT
+};
+
+int irDataPin = A6;
+int irBit1Pin = A2;
+int irBit2Pin = A1;
+
+Mode mode = CLOSE;
+
+
+
+//Includes the Arduino Stepper Library
+#include <Stepper.h>
+
+// Defines the number of steps per rotation
+const int maxSteps = 200;
+
+const int maxMotionDetectOpenTime = 5000; // CHANGE THIS TO SET HOW LONG DOOR STAYS OPEN AFTER MOTION DETECT. 
+int timer = 0;
+
+// Creates an instance of stepper class
+// Pins entered in se , PB6,PB1,PA8, PA11);
+Stepper myStepper = Stepper(maxSteps,PB6,PB1,PA8, PA11);
+void setup() {
+  pinMode(irDataPin, INPUT);
+  pinMode(irBit1Pin, INPUT);
+  pinMode(irBit2Pin, INPUT);
+
+  pinMode(ledRed, OUTPUT);      // declare LED as output
+  pinMode(inputPin, INPUT);     // declare sensor as input
+  pinMode(ledGreen,OUTPUT);
+
+  Serial.begin(115200);
+
+  IrReceiver.begin(irDataPin);
+}
+
+void open() {
+  digitalWrite(ledGreen, HIGH);
+  if(step < maxSteps){          
+      // Rotate CW slowly at 5 RPM
+      myStepper.setSpeed(15);
+      myStepper.step(1);
+      step=step+1;
+    }
+}
+
+void close() {
+  digitalWrite(ledGreen, LOW);
+  if(step > 0)
+    {
+		// Rotate CCW quickly at 10 RPM
+	  myStepper.setSpeed(15);
+	  myStepper.step(-1);
+    step=step-1;
+    }
+}
+
+
+void motionDetect() {
+  motionDetected = digitalRead(inputPin);
+  
+  if (timer > 0 or motionDetected == HIGH)	// check if the input is HIGH
+  {  
+    if(step < maxSteps){          
+      // Rotate CW slowly at 5 RPM
+      myStepper.setSpeed(15);
+      myStepper.step(1);
+      step=step+1;
+    }
+    if(timer > 0) {
+      timer -= 1;
+      Serial.println(timer);
+    }
+  }
+  else if(motionDetected==LOW)
+  {
+    if(step > 0)
+    {
+		// Rotate CCW quickly at 10 RPM
+	  myStepper.setSpeed(15);
+	  myStepper.step(-1);
+    step=step-1;
+    }
+  }
+}
+ 
+void loop(){
+
+  int motionDetector = digitalRead(inputPin);
+  if(timer == 0 and motionDetector == HIGH) {
+    timer = maxMotionDetectOpenTime;
+  }
+
+  if(IrReceiver.decode()) {
+    IrReceiver.resume();
+    int command = IrReceiver.decodedIRData.command;
+    switch (command) {
+      case IR_BUTTON_1: { 
+        mode = OPEN;
+        break;
+      }
+      case IR_BUTTON_2: { //green
+        mode = CLOSE;
+        break;
+      }
+      case IR_BUTTON_3: {
+        mode = MOTION_DETECT;
+        break;
+      }
+      default: {
+        Serial.println("Button not recognized");
+      }
+    }
+    timer = 0;
+  }
+  
+  digitalWrite(ledRed, digitalRead(inputPin));
+
+  switch(mode) {
+    case OPEN:
+      open();
+      break;
+    case CLOSE:
+      close();
+      break;
+    case MOTION_DETECT:
+      motionDetect();
+      break;
+    default:
+      break;
+  }
+  // Serial.println(step);
+}
